@@ -49,9 +49,54 @@ return {
       vim.keymap.set('n', '<leader>dt', cycle_diagnostic_level, { desc = 'Cycle diagnostic level' })
 
       -- ===================================================================
+      -- == LSP TOGGLE FUNCTION
+      -- ===================================================================
+      local lsp_enabled = true
+      
+      local function toggle_lsp()
+        lsp_enabled = not lsp_enabled
+        
+        if lsp_enabled then
+          vim.diagnostic.enable()
+          -- Restart LSP for current buffer
+          vim.cmd('LspRestart')
+          vim.notify("LSP enabled", vim.log.levels.INFO, { title = "LSP" })
+        else
+          vim.diagnostic.disable()
+          -- Stop LSP clients for current buffer
+          local clients = vim.lsp.get_active_clients({ bufnr = 0 })
+          for _, client in ipairs(clients) do
+            vim.lsp.buf_detach_client(0, client.id)
+          end
+          vim.notify("LSP disabled", vim.log.levels.INFO, { title = "LSP" })
+        end
+      end
+
+      vim.keymap.set('n', '<leader>lt', toggle_lsp, { desc = 'Toggle LSP' })
+
+      -- ===================================================================
+      -- == LARGE FILE OPTIMIZATION
+      -- ===================================================================
+      local function is_large_file(bufnr)
+        local max_filesize = 100 * 1024 -- 100KB
+        local ok, stats = pcall(vim.loop.fs_stat, vim.api.nvim_buf_get_name(bufnr))
+        return ok and stats and stats.size > max_filesize
+      end
+
+      -- ===================================================================
       -- == OPTIMIZED ON_ATTACH FUNCTION
       -- ===================================================================
       local on_attach = function(client, bufnr)
+        -- Disable LSP features for large files
+        if is_large_file(bufnr) then
+          client.server_capabilities.documentSymbolProvider = false
+          client.server_capabilities.workspaceSymbolProvider = false
+          client.server_capabilities.semanticTokensProvider = nil
+          client.server_capabilities.documentFormattingProvider = false
+          client.server_capabilities.documentRangeFormattingProvider = false
+          vim.diagnostic.disable(bufnr)
+        end
+
         -- Only set keymaps once per buffer, not per client
         if vim.b[bufnr].lsp_keymaps_set then
           return
@@ -62,7 +107,6 @@ return {
         
         -- Core LSP keymaps
         vim.keymap.set('n', 'gd', vim.lsp.buf.definition, opts)
-        vim.keymap.set('n', 'K', vim.lsp.buf.hover, opts)
         vim.keymap.set('n', 'gi', vim.lsp.buf.implementation, opts)
         vim.keymap.set('n', 'gr', vim.lsp.buf.references, opts)
         vim.keymap.set('n', '<leader>rn', vim.lsp.buf.rename, opts)
@@ -165,33 +209,4 @@ return {
       },
     },
   },
-  
-  {
-    "hrsh7th/nvim-cmp",
-    optional = true,
-    opts = function(_, opts)
-      opts.sources = opts.sources or {}
-      table.insert(opts.sources, {
-        name = "lazydev",
-        group_index = 0,
-      })
-    end,
-  },
-  
-  {
-    "saghen/blink.cmp",
-    optional = true,
-    opts = {
-      sources = {
-        default = { "lazydev", "lsp", "path", "snippets", "buffer" },
-        providers = {
-          lazydev = {
-            name = "LazyDev",
-            module = "lazydev.integrations.blink",
-            score_offset = 100,
-          },
-        },
-      },
-    },
-  }
 }
