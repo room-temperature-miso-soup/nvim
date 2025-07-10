@@ -1,6 +1,4 @@
-=====================================================
-  MY NEOVIM CHEAT SHEET
-=====================================================
+MY NEOVIM CHEAT SHEET
 
 The "Leader" key for all shortcuts is <Spacebar>.
 When you see <leader>ff, it means: Press Space, then f, then f.
