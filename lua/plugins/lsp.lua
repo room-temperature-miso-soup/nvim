@@ -12,6 +12,8 @@ return {
     config = function() 
       require('mason-lspconfig').setup({
         automatic_installation = true,
+        -- Let mason-lspconfig handle the setup to avoid conflicts
+        ensure_installed = { 'pyright', 'gopls', 'lua_ls', 'bashls' },
       }) 
     end 
   },
@@ -64,7 +66,7 @@ return {
         else
           vim.diagnostic.disable()
           -- Stop LSP clients for current buffer
-          local clients = vim.lsp.get_active_clients({ bufnr = 0 })
+          local clients = vim.lsp.get_clients({ bufnr = 0 })
           for _, client in ipairs(clients) do
             vim.lsp.buf_detach_client(0, client.id)
           end
@@ -120,6 +122,35 @@ return {
         vim.keymap.set({ 'n', 'v' }, '<leader>fm', function() 
           vim.lsp.buf.format({ async = true }) 
         end, { buffer = bufnr, desc = 'Format file with LSP' })
+        
+        -- Custom hover handler to prevent duplicates (mainly for gopls)
+        if client.name == 'gopls' then
+          vim.keymap.set('n', 'K', function()
+            -- Get all active clients for this buffer
+            local clients = vim.lsp.get_clients({ bufnr = bufnr, name = 'gopls' })
+            if #clients > 1 then
+              -- If multiple gopls clients, use only the first one
+              vim.lsp.buf_request(bufnr, 'textDocument/hover', vim.lsp.util.make_position_params(), function(err, result, ctx, config)
+                if err then
+                  vim.notify('Error in hover: ' .. err.message, vim.log.levels.ERROR)
+                  return
+                end
+                vim.lsp.handlers.hover(err, result, ctx, config)
+              end)
+            else
+              vim.lsp.buf.hover()
+            end
+          end, { buffer = bufnr, desc = 'Hover (deduplicated)' })
+        end
+        
+        -- Debug keymap
+        vim.keymap.set('n', '<leader>ld', function()
+          local active_clients = vim.lsp.get_clients({ bufnr = bufnr })
+          print("Active clients for buffer " .. bufnr .. ":")
+          for _, c in ipairs(active_clients) do
+            print("  - " .. c.name .. " (id: " .. c.id .. ")")
+          end
+        end, { buffer = bufnr, desc = 'Debug LSP clients' })
       end
 
       -- ===================================================================
@@ -166,8 +197,21 @@ return {
                 unusedparams = true,
               },
               staticcheck = true,
+              -- Try to prevent duplicate hover
+              codelenses = {
+                gc_details = false,
+                generate = false,
+                regenerate_cgo = false,
+                tidy = false,
+                upgrade_dependency = false,
+                vendor = false,
+              },
             },
-          }
+          },
+          -- Ensure single instance per root directory
+          root_dir = function(fname)
+            return lspconfig.util.root_pattern('go.mod', '.git')(fname) or vim.fn.getcwd()
+          end,
         },
         lua_ls = {
           settings = {
